@@ -236,7 +236,7 @@
                 <span class="tag tag-accent">{{ chars.length }}</span>
               </div>
               <div class="extract-list">
-                <div v-for="c in chars" :key="c.id" class="extract-row">
+                <div v-for="c in chars" :key="c.id" class="extract-row" style="cursor:pointer" @click="openCharEdit(c)">
                   <div class="char-avatar">{{ c.name?.[0] || '?' }}</div>
                   <div class="extract-info">
                     <div class="extract-name-row">
@@ -270,6 +270,42 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Edit Character Dialog -->
+        <div v-if="editingChar" class="overlay" @click.self="editingChar = null">
+          <div class="modal card" style="width:480px;max-width:95vw">
+            <div class="modal-header">
+              <h2 class="modal-title">编辑角色</h2>
+              <p class="modal-desc">修改角色信息，影响后续角色形象生成质量</p>
+            </div>
+            <form @submit.prevent="saveCharEdit" class="modal-form">
+              <label class="field">
+                <span class="field-label">角色名 <span class="required">*</span></span>
+                <input v-model="charEditForm.name" class="input" required />
+              </label>
+              <label class="field">
+                <span class="field-label">定位</span>
+                <input v-model="charEditForm.role" class="input" placeholder="如：主角、配角、旁白" />
+              </label>
+              <label class="field">
+                <span class="field-label">外观描述</span>
+                <textarea v-model="charEditForm.appearance" class="input" rows="3" placeholder="描述外貌特征，越详细越有助于生成准确的角色形象图"></textarea>
+              </label>
+              <label class="field">
+                <span class="field-label">性格描述</span>
+                <input v-model="charEditForm.personality" class="input" placeholder="描述性格特点" />
+              </label>
+              <label class="field">
+                <span class="field-label">综合描述</span>
+                <textarea v-model="charEditForm.description" class="input" rows="2" placeholder="其他描述信息"></textarea>
+              </label>
+              <div class="modal-actions">
+                <button type="button" class="btn" @click="editingChar = null">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+              </div>
+            </form>
           </div>
         </div>
 
@@ -1506,6 +1542,8 @@ const pendingComposeIds = ref([])
 const failedVideoMessages = ref({})
 const failedComposeMessages = ref({})
 const imageViewer = ref({ open: false, src: '', title: '' })
+const editingChar = ref(null)
+const charEditForm = ref({ name: '', role: '', description: '', appearance: '', personality: '' })
 
 function configLabel(config) {
   if (!config) return '未配置'
@@ -1525,6 +1563,32 @@ function openImageViewer(src, title = '') {
 
 function closeImageViewer() {
   imageViewer.value = { open: false, src: '', title: '' }
+}
+
+function openCharEdit(c) {
+  editingChar.value = c
+  charEditForm.value = {
+    name: c.name || '',
+    role: c.role || '',
+    description: c.description || '',
+    appearance: c.appearance || '',
+    personality: c.personality || '',
+  }
+}
+
+async function saveCharEdit() {
+  if (!editingChar.value) return
+  try {
+    await characterAPI.update(editingChar.value.id, charEditForm.value)
+    const idx = chars.value.findIndex(c => c.id === editingChar.value.id)
+    if (idx !== -1) {
+      chars.value[idx] = { ...chars.value[idx], ...charEditForm.value }
+    }
+    editingChar.value = null
+    toast.success('已保存')
+  } catch (e) {
+    toast.error(e.message)
+  }
 }
 
 function handleImageViewerKeydown(event) {
