@@ -28,3 +28,13 @@ function normalizeSegment(segment: string) {
   if (!segment) return ''
   return segment.startsWith('/') ? segment : `/${segment}`
 }
+
+export function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b)
+}
+
+export function checkMiniMaxError(result: any): void {
+  if (result.base_resp?.status_code && result.base_resp.status_code !== 0) {
+    throw new Error(`MiniMax API error ${result.base_resp.status_code}: ${result.base_resp.status_msg || 'unknown error'}`)
+  }
+}

@@ -128,6 +128,7 @@ async function processVideoGeneration(id: number, config: AIConfig) {
 
     if (!resp.ok) throw new Error(`API error ${resp.status}: ${await resp.text()}`)
     const result = await resp.json() as any
+    logTaskProgress('VideoTask', 'api-response', { id, provider: config.provider, result: JSON.stringify(result).slice(0, 500) })
 
     const { isAsync, taskId, videoUrl } = adapter.parseGenerateResponse(result)
 
@@ -216,10 +217,24 @@ async function pollVideoTask(id: number, config: AIConfig, taskId: string, story
 
       const pollResp = adapter.parsePollResponse(result)
 
-      if (pollResp.status === 'completed' && pollResp.videoUrl) {
-        logTaskSuccess('VideoTask', 'poll-complete', { id, taskId, videoUrl: pollResp.videoUrl })
-        await handleVideoComplete(id, pollResp.videoUrl, null, storyboardId)
-        return
+      if (pollResp.status === 'completed') {
+        let videoUrl = pollResp.videoUrl
+        if (!videoUrl && pollResp.fileId && adapter.buildFileRetrieveRequest) {
+          logTaskProgress('VideoTask', 'file-retrieve', { id, taskId, fileId: pollResp.fileId })
+          const fileReq = adapter.buildFileRetrieveRequest(config, pollResp.fileId)
+          const fileResp = await fetch(fileReq.url, { method: fileReq.method, headers: fileReq.headers })
+          if (!fileResp.ok) throw new Error(`File retrieve failed: ${fileResp.status}`)
+          const fileResult = await fileResp.json() as any
+          videoUrl = fileResult.file?.download_url
+          if (!videoUrl) throw new Error(`No download_url in file retrieve response`)
+          logTaskProgress('VideoTask', 'file-retrieved', { id, taskId, videoUrl })
+        }
+        if (videoUrl) {
+          logTaskSuccess('VideoTask', 'poll-complete', { id, taskId, videoUrl })
+          await handleVideoComplete(id, videoUrl, null, storyboardId)
+          return
+        }
+        throw new Error('Poll completed but no videoUrl or fileId returned')
       }
       if (pollResp.status === 'failed') {
         logTaskError('VideoTask', 'poll-failed', { id, taskId, error: pollResp.error || 'Video generation failed' })

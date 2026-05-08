@@ -56,7 +56,10 @@ export interface VideoProviderAdapter {
 
   parsePollResponse(result: any): VideoPollResponse
 
-  extractVideoUrl(result: any): string | null
+  /** 某些厂商（如 MiniMax）轮询完成后返回 fileId，需额外请求获取下载链接 */
+  buildFileRetrieveRequest?(config: AIConfig, fileId: string): ProviderRequest
+
+  extractVideoUrl?(result: any): string | null
 }
 
 // ============ 通用类型 ============
@@ -121,6 +124,8 @@ export interface VideoGenResponse {
 export interface VideoPollResponse {
   status: 'pending' | 'processing' | 'completed' | 'failed'
   videoUrl?: string
+  /** For providers (e.g. MiniMax) that return file_id instead of a direct download URL */
+  fileId?: string
   error?: string
 }
 

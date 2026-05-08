@@ -1,6 +1,5 @@
 /**
  * MiniMax 图片生成 Adapter
- * API 风格与 OpenAI 兼容，零改动
  */
 import type {
   ImageProviderAdapter,
@@ -10,7 +9,7 @@ import type {
   ImageGenResponse,
   ImagePollResponse,
 } from './types'
-import { joinProviderUrl } from './url'
+import { joinProviderUrl, gcd, checkMiniMaxError } from './url'
 
 export class MiniMaxImageAdapter implements ImageProviderAdapter {
   provider = 'minimax'
@@ -19,26 +18,29 @@ export class MiniMaxImageAdapter implements ImageProviderAdapter {
     const body: any = {
       model: record.model || config.model,
       prompt: record.prompt,
-      size: record.size || '1920x1080',
       n: 1,
     }
 
-    // MiniMax 支持 reference_images（参考图）
+    // MiniMax subject_reference（参考图，用于角色一致性）
     if (record.referenceImages) {
       try {
         const refs = JSON.parse(record.referenceImages)
         if (refs.length > 0) {
-          body.image = refs // 支持多张参考图
+          body.subject_reference = [{
+            type: 'character',
+            image_file: refs[0],
+          }]
         }
       } catch {}
     }
 
-    // aspect_ratio 参数（MiniMax 支持）
+    // aspect_ratio：MiniMax 要求简化比例，如 "16:9"
     if (record.size) {
-      const [w, h] = record.size.split('x')
-      if (w && h) {
-        const ratio = `${w}/${h}`
-        body.aspect_ratio = ratio
+      const [ws, hs] = record.size.split('x')
+      if (ws && hs) {
+        const w = Number(ws), h = Number(hs)
+        const g = gcd(w, h)
+        body.aspect_ratio = `${w / g}:${h / g}`
       }
     }
 
@@ -54,16 +56,16 @@ export class MiniMaxImageAdapter implements ImageProviderAdapter {
   }
 
   parseGenerateResponse(result: any): ImageGenResponse {
-    // 异步模式：返回 task_id
-    if (result.task_id || result.id) {
-      return { isAsync: true, taskId: result.task_id || result.id }
-    }
-    // 同步模式：直接返回图片 URL
-    const imageUrl = result.data?.[0]?.url || result.url
+    checkMiniMaxError(result)
+    const imageUrl = this.extractImageUrl(result)
     if (imageUrl) {
       return { isAsync: false, imageUrl }
     }
-    throw new Error('No image URL or task_id in response')
+    const taskId = result.task_id || result.id || result.data?.id
+    if (taskId) {
+      return { isAsync: true, taskId }
+    }
+    throw new Error(`No image URL or task_id in response: ${JSON.stringify(result).slice(0, 200)}`)
   }
 
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest {
@@ -78,22 +80,28 @@ export class MiniMaxImageAdapter implements ImageProviderAdapter {
   }
 
   parsePollResponse(result: any): ImagePollResponse {
-    const status = result.status || result.state
-    if (status === 'completed' || status === 'succeeded') {
-      return { status: 'completed', imageUrl: result.image_url || result.data?.image_url || result.url || result.data?.url }
+    checkMiniMaxError(result)
+    const imageUrl = this.extractImageUrl(result)
+    if (imageUrl) {
+      return { status: 'completed', imageUrl }
     }
-    if (status === 'failed' || status === 'error') {
-      return { status: 'failed', error: result.error_msg || result.error || 'Generation failed' }
+    const rawStatus = result.status || result.state || result.data?.status
+    if (rawStatus === 'failed' || rawStatus === 'error') {
+      return { status: 'failed', error: result.error_msg || result.data?.error_msg || result.error || 'Generation failed' }
     }
-    return { status: status || 'processing' }
+    return { status: 'processing' }
   }
 
   extractImageUrl(result: any): string | null {
-    return result.image_url || result.data?.image_url || result.url || result.data?.url || null
+    return result.data?.image_urls?.[0]
+      || result.data?.image_url
+      || result.image_url
+      || result.data?.url
+      || result.url
+      || null
   }
 
   extractImageBase64(result: any): { data: string; mimeType: string } | null {
-    // MiniMax 通常返回 URL，不返回 base64
     return null
   }
 }

@@ -4,7 +4,7 @@
  * 响应: { data: { audio: "<hex>", status: 2 }, ... }
  */
 import type { TTSProviderAdapter } from './types'
-import { joinProviderUrl } from './url'
+import { joinProviderUrl, checkMiniMaxError } from './url'
 
 export interface TTSParams {
   text: string
@@ -63,22 +63,21 @@ export class MiniMaxTTSAdapter implements TTSProviderAdapter {
   }
 
   parseResponse(result: any): TTSResult {
-    if (result.base_resp?.status_code !== 0) {
-      throw new Error(result.base_resp?.status_msg || 'TTS generation failed')
-    }
+    checkMiniMaxError(result)
 
     const data = result.data
     if (!data?.audio) {
       throw new Error('No audio data in response')
     }
 
+    const info = result.extra_info
     return {
       audioHex: data.audio,
-      audioLength: data.extra_info?.audio_length || 0,
-      sampleRate: data.extra_info?.audio_sample_rate || 32000,
-      bitrate: data.extra_info?.bitrate || 128000,
-      format: data.extra_info?.audio_format || 'mp3',
-      channel: data.extra_info?.audio_channel || 1,
+      audioLength: info?.audio_length || 0,
+      sampleRate: info?.audio_sample_rate || 32000,
+      bitrate: info?.bitrate || 128000,
+      format: info?.audio_format || 'mp3',
+      channel: info?.audio_channel || 1,
     }
   }
 }

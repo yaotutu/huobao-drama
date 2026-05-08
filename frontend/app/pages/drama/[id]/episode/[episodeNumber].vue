@@ -2698,10 +2698,15 @@ async function genShotFrame(sb, frameType) {
 }
 
 async function genVid(sb) {
+  const prompt = (sb.video_prompt || sb.videoPrompt || '').trim()
+  if (!prompt) {
+    toast.error('视频提示词为空，请先填写该分镜的视频提示词')
+    return
+  }
   const params = {
     storyboard_id: sb.id,
     drama_id: dramaId,
-    prompt: sb.video_prompt || sb.videoPrompt || '',
+    prompt,
     duration: Number(sb.duration || 5),
   }
   const first = getFirstFrame(sb)

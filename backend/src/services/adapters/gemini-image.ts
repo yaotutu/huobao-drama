@@ -14,7 +14,7 @@ import type {
   ImageGenResponse,
   ImagePollResponse,
 } from './types'
-import { joinProviderUrl } from './url'
+import { joinProviderUrl, gcd } from './url'
 import { parseDataUrl } from '../../utils/storage.js'
 
 export class GeminiImageAdapter implements ImageProviderAdapter {
@@ -151,8 +151,8 @@ export class GeminiImageAdapter implements ImageProviderAdapter {
     if (!size) return '16:9'
     const [w, h] = size.split('x').map(Number)
     if (!w || !h) return '16:9'
-    const gcd = this.gcd(w, h)
-    return `${w / gcd}:${h / gcd}`
+    const g = gcd(w, h)
+    return `${w / g}:${h / g}`
   }
 
   private parseImageSize(size?: string | null): string {
@@ -163,9 +163,5 @@ export class GeminiImageAdapter implements ImageProviderAdapter {
     if (w >= 1024) return '2K'
     if (w >= 512) return '1K'
     return '512'
-  }
-
-  private gcd(a: number, b: number): number {
-    return b === 0 ? a : this.gcd(b, a % b)
   }
 }
