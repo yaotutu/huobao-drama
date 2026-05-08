@@ -62,6 +62,22 @@ export const characters = sqliteTable('characters', {
   deletedAt: text('deleted_at'),
 })
 
+// 全局角色库 - 独立于项目
+export const globalCharacters = sqliteTable('global_characters', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  role: text('role'),
+  description: text('description'),
+  appearance: text('appearance'),
+  personality: text('personality'),
+  imageUrl: text('image_url'),
+  referenceImages: text('reference_images'),
+  localPath: text('local_path'),
+  imageConfigId: integer('image_config_id'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
 // Episode-Character many-to-many
 export const episodeCharacters = sqliteTable('episode_characters', {
   id: integer('id').primaryKey({ autoIncrement: true }),

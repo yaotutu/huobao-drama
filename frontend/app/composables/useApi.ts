@@ -66,6 +66,14 @@ export const characterAPI = {
   batchImages: (ids: number[], episodeId: number) => api.post('/characters/batch-generate-images', { character_ids: ids, episode_id: episodeId }),
 }
 
+export const globalCharacterAPI = {
+  list: () => api.get('/global-characters'),
+  create: (data: any) => api.post('/global-characters', data),
+  update: (id: number, data: any) => api.put(`/global-characters/${id}`, data),
+  delete: (id: number) => api.delete(`/global-characters/${id}`),
+  generateImage: (id: number, imageConfigId?: number) => api.post(`/global-characters/${id}/generate-image`, { image_config_id: imageConfigId }),
+}
+
 export const sceneAPI = {
   generateImage: (id: number, episodeId: number) => api.post(`/scenes/${id}/generate-image`, { episode_id: episodeId }),
 }
