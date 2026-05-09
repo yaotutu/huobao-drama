@@ -73,6 +73,21 @@ sqlite.exec(`
     deleted_at TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS global_characters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT,
+    description TEXT,
+    appearance TEXT,
+    personality TEXT,
+    image_url TEXT,
+    reference_images TEXT,
+    local_path TEXT,
+    image_config_id INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS scenes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     drama_id INTEGER NOT NULL,

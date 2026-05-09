@@ -72,6 +72,8 @@ export const globalCharacterAPI = {
   update: (id: number, data: any) => api.put(`/global-characters/${id}`, data),
   delete: (id: number) => api.delete(`/global-characters/${id}`),
   generateImage: (id: number, imageConfigId?: number) => api.post(`/global-characters/${id}/generate-image`, { image_config_id: imageConfigId }),
+  generateVariations: (id: number, angles: string[], imageConfigId?: number) =>
+    api.post(`/global-characters/${id}/generate-variations`, { angles, image_config_id: imageConfigId }),
 }
 
 export const sceneAPI = {
