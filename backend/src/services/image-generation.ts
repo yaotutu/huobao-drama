@@ -2,7 +2,7 @@ import { db, schema } from '../db/index.js'
 import { eq } from 'drizzle-orm'
 import { getActiveConfig, getConfigById } from './ai.js'
 import { now } from '../utils/response.js'
-import { downloadFile, readImageAsCompressedDataUrl, saveBase64Image } from '../utils/storage.js'
+import { downloadFile, readImageAsCompressedDataUrl, readImageAsHighQualityDataUrl, saveBase64Image } from '../utils/storage.js'
 import { getImageAdapter } from './adapters/registry'
 import type { AIConfig } from './adapters/types'
 import { logTaskError, logTaskPayload, logTaskProgress, logTaskStart, logTaskSuccess, logTaskWarn, redactUrl } from '../utils/task-logger.js'
@@ -90,7 +90,10 @@ async function processImageGeneration(id: number, config: AIConfig) {
     })
 
     // 使用 Adapter 构建请求
-    const resolvedReferenceImages = await normalizeReferenceImages(record.referenceImages)
+    // 角色图用高质量参考图（PNG，保留面部细节），其他用普通质量
+    const resolvedReferenceImages = record.characterId
+      ? await normalizeCharacterReferenceImages(record.referenceImages)
+      : await normalizeReferenceImages(record.referenceImages)
     const { url, method, headers, body } = adapter.buildGenerateRequest(config, {
       id: record.id,
       model: record.model,
@@ -189,13 +192,53 @@ async function normalizeReferenceImages(raw: string | null | undefined): Promise
     if (value.startsWith('static/') || value.startsWith('/static/')) {
       const localPath = value.startsWith('/static/') ? value.slice(1) : value
       try {
+        // 角色一致性参考图需要高质量：1024px + 92% 质量，避免面部细节丢失
         return await readImageAsCompressedDataUrl(localPath, {
-          maxWidth: 768,
-          maxHeight: 768,
-          quality: 68,
+          maxWidth: 1024,
+          maxHeight: 1024,
+          quality: 92,
         })
       } catch (err) {
         logTaskWarn('ImageTask', 'reference-read-failed', { path: localPath, error: (err as Error).message })
+        return null
+      }
+    }
+    return value
+  }))
+
+  return normalized.filter((item): item is string => !!item).slice(0, 6)
+}
+
+/**
+ * 角色一致性参考图专用（最高质量，避免压缩损失面部细节）
+ * 使用原始尺寸（最大 2048px）+ PNG 格式
+ */
+async function normalizeCharacterReferenceImages(raw: string | null | undefined): Promise<string[]> {
+  if (!raw) return []
+  let refs: string[] = []
+  try {
+    refs = JSON.parse(raw)
+  } catch {
+    refs = []
+  }
+
+  const deduped = Array.from(
+    new Set(
+      refs
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    ),
+  )
+
+  const normalized = await Promise.all(deduped.map(async (value) => {
+    if (value.startsWith('data:image/')) return value
+    if (value.startsWith('static/') || value.startsWith('/static/')) {
+      const localPath = value.startsWith('/static/') ? value.slice(1) : value
+      try {
+        // 角色参考图：使用高质量 PNG，最大 2048px，保留所有面部细节
+        return await readImageAsHighQualityDataUrl(localPath)
+      } catch (err) {
+        logTaskWarn('ImageTask', 'character-ref-read-failed', { path: localPath, error: (err as Error).message })
         return null
       }
     }

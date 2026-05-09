@@ -119,6 +119,30 @@ export async function readImageAsCompressedDataUrl(
   return `data:${mimeType};base64,${output.toString('base64')}`
 }
 
+/**
+ * 高质量读取本地图片（用于角色一致性参考图，避免过度压缩丢失面部细节）
+ * - 保留原始宽高比
+ * - 使用 95% JPEG 质量
+ * - 最多缩放到 1024px
+ */
+export async function readImageAsHighQualityDataUrl(relativePath: string): Promise<string> {
+  const filePath = getAbsolutePath(relativePath)
+  const metadata = await sharp(filePath).metadata()
+  const width = metadata.width || 1024
+  const height = metadata.height || 1024
+
+  // 缩放到最大 1024px，但保留原始宽高比
+  const resized = sharp(filePath).rotate().resize({
+    width: Math.min(width, 1024),
+    height: Math.min(height, 1024),
+    fit: 'inside',
+    withoutEnlargement: true,
+  })
+  // 高质量输出，不使用 mozjpeg（避免过多压缩损失细节）
+  const output = await resized.jpeg({ quality: 95 }).toBuffer()
+  return `data:image/jpeg;base64,${output.toString('base64')}`
+}
+
 export function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
   const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/)
   if (!match) return null
