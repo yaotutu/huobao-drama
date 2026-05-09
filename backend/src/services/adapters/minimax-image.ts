@@ -21,6 +21,9 @@ export class MiniMaxImageAdapter implements ImageProviderAdapter {
       n: 1,
     }
 
+    if (record.seed) body.seed = record.seed
+    if (record.negativePrompt) body.negative_prompt = record.negativePrompt
+
     // MiniMax subject_reference（参考图，用于角色一致性）
     if (record.referenceImages) {
       try {

@@ -126,18 +126,25 @@ app.post('/:id/generate-image', async (c) => {
   const [char] = db.select().from(schema.globalCharacters).where(eq(schema.globalCharacters.id, id)).all()
   if (!char) return badRequest(c, 'Character not found')
 
-  const prompt = `${char.name}, ${char.appearance || char.description || '人物立绘'}, 高质量, 正面, 白色背景`
   let referenceImages: string[] | undefined
   if (char.referenceImages) {
     try { referenceImages = JSON.parse(char.referenceImages) } catch {}
   }
 
+  // 构建丰富的提示词：从 appearance 展开为详细英文描述
+  const basePrompt = buildCharacterPortraitPrompt(char.name, char.appearance || '', char.personality || '')
+  // 随机 seed 保证重新生成有变化
+  const seed = Math.floor(Math.random() * 999999999)
+  const negativePrompt = 'blurry, low quality, watermark, text, logo, signature, deformed face, bad anatomy'
+
   try {
-    logTaskStart('GlobalCharacterImage', 'generate', { characterId: id, prompt })
+    logTaskStart('GlobalCharacterImage', 'generate', { characterId: id, seed, prompt: basePrompt })
     const genId = await generateImage({
       characterId: id,
-      prompt,
+      prompt: basePrompt,
       referenceImages,
+      seed,
+      negativePrompt,
       configId: body.image_config_id || char.imageConfigId || undefined,
     })
     logTaskSuccess('GlobalCharacterImage', 'generate', { characterId: id, generationId: genId })
@@ -164,25 +171,21 @@ app.post('/:id/generate-variations', async (c) => {
   }
   if (!referenceImages?.length) return badRequest(c, '请先上传参考图并锁定基准图')
 
-  const anglePrompts: Record<string, string> = {
-    front: '正面视角，标准头像照，纯净背景',
-    side: '侧面视角，3/4侧脸角度',
-    closeup: '面部特写，高清五官细节',
-    full_body: '全身照，完整人物造型',
-    half: '半身照，腰部以上',
-    emotion: '情绪特写，表情丰富，传达情感',
-  }
+  const negativePrompt = 'blurry, low quality, watermark, text, logo, signature, deformed face, bad anatomy'
+  const baseDesc = buildCharacterPortraitPrompt(char.name, char.appearance || '', char.personality || '')
 
   const results: { angle: string; image_generation_id: number }[] = []
   for (const angle of angles) {
-    const angleHint = anglePrompts[angle] || angle
-    const prompt = `${char.name}, ${char.appearance || char.description || ''}, ${angleHint}, 高质量, 电影感`
+    const anglePrompt = buildAnglePrompt(angle, baseDesc)
+    const seed = Math.floor(Math.random() * 999999999)
     try {
-      logTaskStart('GlobalCharacterVariation', angle, { characterId: id, prompt })
+      logTaskStart('GlobalCharacterVariation', angle, { characterId: id, seed, prompt: anglePrompt })
       const genId = await generateImage({
         characterId: id,
-        prompt,
+        prompt: anglePrompt,
         referenceImages,
+        seed,
+        negativePrompt,
         configId: body.image_config_id || char.imageConfigId || undefined,
       })
       results.push({ angle, image_generation_id: genId })
@@ -194,5 +197,86 @@ app.post('/:id/generate-variations', async (c) => {
 
   return success(c, { count: results.length, results })
 })
+
+// ─── 提示词构建辅助 ────────────────────────────────────────
+
+function buildCharacterPortraitPrompt(name: string, appearance: string, personality: string): string {
+  const parts: string[] = []
+
+  // 名字作为角色标识
+  if (name) parts.push(`character: ${name}`)
+
+  // 将外观描述展开为英文视觉描述
+  if (appearance) {
+    // 把中文外观描述转成英文提示词（简洁翻译 + 扩展）
+    const expanded = expandAppearance(appearance)
+    parts.push(expanded)
+  }
+
+  // 性格带来的气质
+  if (personality) {
+    parts.push(mapPersonalityToStyle(personality))
+  }
+
+  // 通用质量要求
+  parts.push('cinematic portrait, high detail, sharp focus, studio lighting, film grain, 8k quality')
+
+  return parts.join(', ')
+}
+
+function expandAppearance(appearance: string): string {
+  // 将常见中文外观词汇映射为英文提示词片段
+  const mappings: [string, string][] = [
+    ['短发', 'short hair'], ['长发', 'long hair'], ['卷发', 'curly hair'], ['直发', 'straight hair'],
+    ['黑发', 'black hair'], ['棕发', 'brown hair'], ['金发', 'blonde hair'], ['白发', 'white hair'],
+    ['蓝色眼睛', 'blue eyes'], ['棕色眼睛', 'brown eyes'], ['绿色眼睛', 'green eyes'], ['黑色眼睛', 'dark eyes'],
+    ['大眼睛', 'large eyes'], ['高鼻梁', 'high nose bridge'], ['薄唇', 'thin lips'], ['厚唇', 'full lips'],
+    ['瓜子脸', 'oval face shape'], ['圆脸', 'round face shape'], ['方脸', 'square jaw'],
+    ['微笑', 'slight smile'], ['严肃', 'serious expression'], ['冷峻', 'cold expression'],
+    ['白皙', 'fair skin'], ['古铜色', 'tan skin'], ['黝黑', 'dark skin'],
+    ['西装', 'business suit'], ['休闲', 'casual clothing'], ['古装', 'traditional costume'],
+    ['T恤', 't-shirt'], ['牛仔裤', 'jeans'], ['连衣裙', 'dress'],
+    ['高大', 'tall'], ['苗条', 'slim'], ['健壮', 'muscular'], ['微胖', 'slightly overweight'],
+    ['戴眼镜', 'wearing glasses'], ['戴帽子', 'wearing hat'], ['长发披肩', 'long hair flowing over shoulders'],
+  ]
+
+  let result = appearance
+  for (const [cn, en] of mappings) {
+    result = result.replace(new RegExp(cn, 'g'), en)
+  }
+
+  // 如果没有匹配到任何词汇，用原文描述
+  if (result === appearance) {
+    return `detailed portrait of person, ${appearance}`
+  }
+  return result
+}
+
+function mapPersonalityToStyle(personality: string): string {
+  const p = personality.toLowerCase()
+  if (p.includes('温柔') || p.includes('柔')) return 'warm gentle atmosphere, soft lighting'
+  if (p.includes('冷酷') || p.includes('冷峻') || p.includes('霸道')) return 'cold serious atmosphere, dramatic lighting'
+  if (p.includes('活泼') || p.includes('开朗') || p.includes('阳光')) return 'bright cheerful atmosphere, natural light'
+  if (p.includes('忧郁') || p.includes('悲伤')) return 'melancholic atmosphere, muted tones, soft shadows'
+  if (p.includes('神秘')) return 'mysterious atmosphere, dramatic shadows, cinematic'
+  if (p.includes('成熟')) return 'mature sophisticated atmosphere, elegant'
+  if (p.includes('青春') || p.includes('年轻')) return 'youthful fresh atmosphere, bright'
+  return 'cinematic quality, film photography'
+}
+
+const angleConfigs: Record<string, { pose: string; lighting: string; framing: string }> = {
+  front:   { pose: 'front-facing, looking at camera, relaxed posture', lighting: 'soft frontal studio light', framing: 'head and shoulders portrait' },
+  side:    { pose: '3/4 turned to side, gazing into distance', lighting: 'side rim light, moody', framing: 'head and shoulders' },
+  closeup: { pose: 'close-up on face, slight head tilt', lighting: 'high key beauty light, even skin tones', framing: 'face filling frame, eyes in focus' },
+  full_body: { pose: 'standing full body, natural stance', lighting: 'full body studio lighting, even', framing: 'full body in frame, ample headroom' },
+  half:    { pose: 'seated or waist-up framing', lighting: 'soft fill light, warm tones', framing: 'waist to head' },
+  emotion: { pose: 'expressive close-up, capturing strong emotion', lighting: 'dramatic chiaroscuro lighting', framing: 'intimate close-up, eyes as focal point' },
+}
+
+function buildAnglePrompt(angle: string, baseDesc: string): string {
+  const cfg = angleConfigs[angle]
+  if (!cfg) return baseDesc
+  return `${baseDesc}, ${cfg.pose}, ${cfg.lighting}, ${cfg.framing}, cinematic portrait, 8k`
+}
 
 export default app

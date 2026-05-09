@@ -18,6 +18,8 @@ interface GenerateImageParams {
   referenceImages?: string[]
   frameType?: string
   configId?: number
+  seed?: number
+  negativePrompt?: string
 }
 
 export async function generateImage(params: GenerateImageParams): Promise<number> {
@@ -38,6 +40,8 @@ export async function generateImage(params: GenerateImageParams): Promise<number
     size: params.size || '1920x1080',
     frameType: params.frameType,
     referenceImages: params.referenceImages ? JSON.stringify(params.referenceImages) : null,
+    seed: params.seed,
+    negativePrompt: params.negativePrompt,
     status: 'processing',
     createdAt: ts,
     updatedAt: ts,
@@ -94,6 +98,8 @@ async function processImageGeneration(id: number, config: AIConfig) {
       size: record.size,
       frameType: record.frameType,
       referenceImages: resolvedReferenceImages ? JSON.stringify(resolvedReferenceImages) : null,
+      seed: (record as any).seed || undefined,
+      negativePrompt: (record as any).negative_prompt || undefined,
     })
     logTaskProgress('ImageTask', 'request', {
       id,

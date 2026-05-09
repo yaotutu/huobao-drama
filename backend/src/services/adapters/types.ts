@@ -85,7 +85,8 @@ export interface ImageGenerationRecord {
   size?: string | null
   frameType?: string | null
   referenceImages?: string | null
-  // ... 其他字段
+  seed?: number | null
+  negativePrompt?: string | null
 }
 
 export interface VideoGenerationRecord {
